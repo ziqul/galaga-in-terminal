@@ -9,16 +9,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut renderer = renderer::init(80, 20)?;
 
     let mut obj =
-        renderer::types::Object {
-            x: 5,
-            y: 5,
-            null_char: ' ',
-            data: vec![
-                vec![' ', '2', ' '],
-                vec!['4', '5', '6'],
-                vec![' ', '8', ' '],
-            ],
-        };
+        renderer::types::Object::from_file(
+            "./res/objects/snowflake.yaml")?;
 
     let mut out = false;
     loop {
