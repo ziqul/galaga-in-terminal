@@ -1,5 +1,7 @@
 mod object;
 mod renderer;
 
-pub type Object = object::Object;
+pub type Location = object::Location;
+pub type Representation = object::Representation;
+
 pub type Renderer = renderer::Renderer;

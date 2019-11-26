@@ -1,46 +1,47 @@
 use std::error::Error;
-use std::env;
 use std::fs;
 
 use yaml_rust::YamlLoader;
 
-pub struct Object {
-    pub x: usize,
-    pub y: usize,
+pub struct Location {
+    pub x: i64,
+    pub y: i64,
+}
+
+pub struct Representation {
     pub null_char: char,
     pub data: Vec<Vec<char>>,
 }
 
-impl Object {
+impl Representation {
     pub fn from_file(
         filepath: &str
     ) ->
-        Result<Object, Box<dyn Error>>
+        Result<Representation, Box<dyn Error>>
     {
-        let err_msg =
-            "renderer::types::Object::from_file(): ".to_owned() +
-            "Cannot open '" + filepath +
-            "' from '" + env::current_dir()?.to_str().unwrap() + "'.";
-
         let contents =
-            fs::read_to_string(filepath)
-                .expect(&err_msg);
+            fs::read_to_string(filepath).unwrap();
 
-        let doc = YamlLoader::load_from_str(&contents)?;
+        let doc =
+            &YamlLoader::load_from_str(&contents)?[0];
 
+        let data_str = doc["data"].as_str().unwrap();
         let mut data_vec = Vec::<Vec<char>>::new();
-        let data_str = doc[0]["data"].as_str().unwrap();
 
         for part in data_str.split('\n') {
-            let line: Vec<char> = part.chars().collect();
+            let line: Vec<char> =
+                part.chars().collect();
 
             data_vec.push(line);
         }
 
-        Ok(Object {
-            x: 0,
-            y: 0,
-            null_char: doc[0]["null_char"].as_str().unwrap().to_owned().remove(0),
+        let null_char_str =
+            doc["null_char"].as_str().unwrap();
+        let null_char_char =
+            null_char_str.chars().next().unwrap();
+
+        Ok(Representation {
+            null_char: null_char_char,
             data: data_vec
         })
     }

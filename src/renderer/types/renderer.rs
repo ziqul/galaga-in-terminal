@@ -36,7 +36,8 @@ impl Renderer {
     }
 
     pub fn render(
-        &mut self, objects: &Vec<&types::Object>
+        &mut self,
+        objects: &Vec<(&types::Location, &types::Representation)>
     ) ->
         Result<(), Box<dyn Error>>
     {
@@ -49,22 +50,26 @@ impl Renderer {
 
         for o in objects {
             // object width, object height
-            let owidth = (*o).data.len();
-            let oheight = (*o).data[0].len();
+            let owidth = o.1.data.len();
+            let oheight = o.1.data[0].len();
 
             for i in 0..owidth {
                 for j in 0..oheight {
                     // null_char
-                    let nc = (*o).null_char;
+                    let nc = o.1.null_char;
 
-                    if (*o).data[i][j] != nc {
-                        // positions relative to frame
-                        // "frame_x", "frame_y"
-                        let fx = (*o).x + j;
-                        let fy = (*o).y + i;
+                    // positions relative to frame
+                    // "frame_x", "frame_y"
+                    let fx = o.0.x + j as i64;
+                    let fy = o.0.y + i as i64;
 
-                        new_frame[fx][fy] =
-                            (*o).data[i][j];
+                    if
+                        o.1.data[i][j] != nc &&
+                        fx >= 0 && (fx as usize) < fwidth &&
+                        fy >= 0 && (fy as usize) < fheight
+                    {
+                        new_frame[fx as usize][fy as usize] =
+                            o.1.data[i][j];
                     }
                 }
             }
