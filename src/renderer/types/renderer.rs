@@ -66,7 +66,7 @@ impl Renderer {
                     if
                         o.1.data()[i][j] != nc &&
                         fx >= 0 && fx < fwidth as i32 &&
-                        fy >= 0 && fx < fheight as i32
+                        fy >= 0 && fy < fheight as i32
                     {
                         let fx_u = fx as usize;
                         let fy_u = fy as usize;
