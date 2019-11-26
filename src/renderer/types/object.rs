@@ -4,13 +4,13 @@ use std::fs;
 use yaml_rust::YamlLoader;
 
 pub struct Location {
-    pub x: i64,
-    pub y: i64,
+    pub x: i32,
+    pub y: i32,
 }
 
 pub struct Representation {
-    pub null_char: char,
-    pub data: Vec<Vec<char>>,
+    null_char: char,
+    data: Vec<Vec<char>>,
 }
 
 impl Representation {
@@ -44,5 +44,13 @@ impl Representation {
             null_char: null_char_char,
             data: data_vec
         })
+    }
+
+    pub fn null_char(&self) -> char {
+        (*self).null_char
+    }
+
+    pub fn data(&self) -> &Vec<Vec<char>> {
+        &(*self).data
     }
 }

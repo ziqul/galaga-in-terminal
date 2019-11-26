@@ -50,26 +50,29 @@ impl Renderer {
 
         for o in objects {
             // object width, object height
-            let owidth = o.1.data.len();
-            let oheight = o.1.data[0].len();
+            let owidth = o.1.data().len();
+            let oheight = o.1.data()[0].len();
 
             for i in 0..owidth {
                 for j in 0..oheight {
                     // null_char
-                    let nc = o.1.null_char;
+                    let nc = o.1.null_char();
 
                     // positions relative to frame
                     // "frame_x", "frame_y"
-                    let fx = o.0.x + j as i64;
-                    let fy = o.0.y + i as i64;
+                    let fx = o.0.x + j as i32;
+                    let fy = o.0.y + i as i32;
 
                     if
-                        o.1.data[i][j] != nc &&
-                        fx >= 0 && (fx as usize) < fwidth &&
-                        fy >= 0 && (fy as usize) < fheight
+                        o.1.data()[i][j] != nc &&
+                        fx >= 0 && fx < fwidth as i32 &&
+                        fy >= 0 && fx < fheight as i32
                     {
-                        new_frame[fx as usize][fy as usize] =
-                            o.1.data[i][j];
+                        let fx_u = fx as usize;
+                        let fy_u = fy as usize;
+
+                        new_frame[fx_u][fy_u] =
+                            o.1.data()[i][j];
                     }
                 }
             }
