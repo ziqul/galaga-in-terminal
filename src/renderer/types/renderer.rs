@@ -80,7 +80,7 @@ impl Renderer {
 
         for x in 0..fwidth {
             for y in 0..fheight {
-                if (*self).old_frame != new_frame {
+                if (*self).old_frame[x][y] != new_frame[x][y] {
                     (*self).stdout.queue(
                         cursor::MoveTo(
                             x as u16, y as u16)
