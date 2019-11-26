@@ -13,7 +13,7 @@ pub fn gameloop<T>(
     mut renderer: Renderer,
     input: fn(&mut T, Vec<InputEvent>, &mut bool) -> (),
     update: fn(&mut T, Duration) -> (),
-    render: fn(&mut T, &Renderer) -> Result<(), Box<dyn Error>>,
+    render: fn(&mut T, &mut Renderer) -> Result<(), Box<dyn Error>>,
 ) ->
     Result<(), Box<dyn Error>>
 {
@@ -40,7 +40,7 @@ pub fn gameloop<T>(
 
         render(
             &mut state,
-            &renderer)?;
+            &mut renderer)?;
 
         let curr_loop_end = timer.elapsed();
         let curr_loop_dur = curr_loop_end - curr_loop_start;
