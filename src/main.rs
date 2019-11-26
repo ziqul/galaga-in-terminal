@@ -53,7 +53,7 @@ fn update(
 
 fn render(
     state: &mut GameState,
-    renderer: &Renderer
+    renderer: &mut Renderer
 ) ->
     Result<(), Box<dyn Error>>
 {
