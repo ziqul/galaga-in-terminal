@@ -1,17 +1,46 @@
 mod renderer;
 mod gameloop;
 
+use std::fmt;
 use std::error::Error;
 use std::time::Duration;
 use std::panic;
+use std::thread;
 
 use crossterm::input::InputEvent;
 use crossterm::input::KeyEvent;
 use rand::Rng;
+use ::backtrace::Backtrace;
 
 use renderer::types::Location;
 use renderer::types::Renderer;
 use renderer::types::Representation;
+
+#[cfg(not(feature = "with-backtrace"))]
+mod backtrace {
+    pub struct Backtrace;
+
+    impl Backtrace {
+        pub fn new() -> Backtrace {
+            Backtrace
+        }
+    }
+}
+
+struct Shim(Backtrace);
+
+impl fmt::Debug for Shim {
+    #[cfg(feature = "with-backtrace")]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "\n{:?}", self.0)
+    }
+
+    #[cfg(not(feature = "with-backtrace"))]
+    fn fmt(&self, _: &mut fmt::Formatter) -> fmt::Result {
+        Ok(())
+    }
+}
+
 
 // screen size
 const S_SIZE: (u16, u16) = (50, 30);
@@ -25,6 +54,7 @@ struct Enemy {
     pub x: i32,
     pub y: i32,
     pub speed: i32,
+    pub speedup: u8
 }
 
 struct Bullet {
@@ -49,16 +79,46 @@ struct GameState {
     bullets: Vec<Bullet>,
     enemy_view: usize,
     enemies: Vec<Enemy>,
+    ammo: u8
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     simple_logging::log_to_file(
         "output.log", log::LevelFilter::Info)?;
-    panic::set_hook(Box::new(|panic_info| {
-        if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-            log::error!("panic occurred: {:?}", s);
-        } else {
-            log::error!("panic occurred");
+    panic::set_hook(Box::new(|info| {
+        let backtrace = Backtrace::new();
+
+        let thread = thread::current();
+        let thread = thread.name().unwrap_or("unnamed");
+
+        let msg = match info.payload().downcast_ref::<&'static str>() {
+            Some(s) => *s,
+            None => match info.payload().downcast_ref::<String>() {
+                Some(s) => &**s,
+                None => "Box<Any>",
+            },
+        };
+
+        match info.location() {
+            Some(location) => {
+                log::error!(
+                    target: "panic", "thread '{}' panicked at '{}': {}:{}{:?}",
+                    thread,
+                    msg,
+                    location.file(),
+                    location.line(),
+                    Shim(backtrace)
+                );
+            }
+            None => {
+                log::error!(
+                    target: "panic",
+                    "thread '{}' panicked at '{}'{:?}",
+                    thread,
+                    msg,
+                    Shim(backtrace)
+                )
+            }
         }
     }));
 
@@ -86,16 +146,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             view: turret_view
         },
         bullet_view: bullet_view,
-        // bullets: Vec::<Bullet>::new(),
-        bullets: vec![Bullet {
-                    speed: -20,
-                    x: 0,
-                    y: 0,
-                    xf: 0.0,
-                    yf: 0.0,
-                }],
+        bullets: Vec::<Bullet>::new(),
         enemy_view: enemy_view,
         enemies: create_enemies(),
+        ammo: 3
     };
 
     gameloop::gameloop(
@@ -135,16 +189,20 @@ fn input(
                 }
             }
             InputEvent::Keyboard(KeyEvent::Up) => {
-                let x = (*state).turret.x + 3;
-                let y = (*state).turret.y - 0;
+                if (*state).ammo > 0 {
+                    let x = (*state).turret.x + 3;
+                    let y = (*state).turret.y - 0;
 
-                (*state).bullets.push(Bullet {
-                    speed: -20,
-                    x: x,
-                    y: y,
-                    xf: x as f32,
-                    yf: y as f32,
-                });
+                    (*state).ammo -= 1;
+
+                    (*state).bullets.push(Bullet {
+                        speed: -20,
+                        x: x,
+                        y: y,
+                        xf: x as f32,
+                        yf: y as f32,
+                    });
+                }
             }
             _ => {}
         }
@@ -174,6 +232,7 @@ fn update(
             (*enemy_ptr).y > S_SIZE.1 as i32
         {
             enemies_on_removal.push(i);
+            (*enemy_ptr).speedup = 1;
         }
     }
 
@@ -240,17 +299,20 @@ fn update(
 
     bullets_on_removal.sort();
     bullets_on_removal.reverse();
+    bullets_on_removal.dedup();
     for i in bullets_on_removal {
         (*state).bullets.remove(i);
+        (*state).ammo += 1;
     }
 
     enemies_on_removal.sort();
     enemies_on_removal.reverse();
-    for i in enemies_on_removal {
+    enemies_on_removal.dedup();
+    for i in enemies_on_removal.iter().cloned() {
         let removed_enemy = (*state).enemies.remove(i);
         new_enemies.push(
             create_enemy(
-                removed_enemy.speed + 1, 0
+                removed_enemy.speed + removed_enemy.speedup as i32, 0
             )
         );
     }
@@ -351,6 +413,7 @@ fn create_enemy(spd: i32, y: i32) -> Enemy {
         y: y,
         target_x: x,
         target_y: y,
-        speed: spd
+        speed: spd,
+        speedup: 0
     }
 }
