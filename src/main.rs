@@ -1,7 +1,6 @@
 mod renderer;
 mod gameloop;
 
-use std::fmt;
 use std::error::Error;
 use std::time::Duration;
 use std::panic;
@@ -10,37 +9,10 @@ use std::thread;
 use crossterm::input::InputEvent;
 use crossterm::input::KeyEvent;
 use rand::Rng;
-use ::backtrace::Backtrace;
 
 use renderer::types::Location;
 use renderer::types::Renderer;
 use renderer::types::Representation;
-
-#[cfg(not(feature = "with-backtrace"))]
-mod backtrace {
-    pub struct Backtrace;
-
-    impl Backtrace {
-        pub fn new() -> Backtrace {
-            Backtrace
-        }
-    }
-}
-
-struct Shim(Backtrace);
-
-impl fmt::Debug for Shim {
-    #[cfg(feature = "with-backtrace")]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "\n{:?}", self.0)
-    }
-
-    #[cfg(not(feature = "with-backtrace"))]
-    fn fmt(&self, _: &mut fmt::Formatter) -> fmt::Result {
-        Ok(())
-    }
-}
-
 
 // screen size
 const S_SIZE: (u16, u16) = (50, 30);
@@ -79,15 +51,14 @@ struct GameState {
     bullets: Vec<Bullet>,
     enemy_view: usize,
     enemies: Vec<Enemy>,
-    ammo: u8
+    ammo: u8,
+    score: u16
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     simple_logging::log_to_file(
         "output.log", log::LevelFilter::Info)?;
     panic::set_hook(Box::new(|info| {
-        let backtrace = Backtrace::new();
-
         let thread = thread::current();
         let thread = thread.name().unwrap_or("unnamed");
 
@@ -102,21 +73,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         match info.location() {
             Some(location) => {
                 log::error!(
-                    target: "panic", "thread '{}' panicked at '{}': {}:{}{:?}",
+                    "thread '{}' panicked at '{}': {}:{}",
                     thread,
                     msg,
                     location.file(),
                     location.line(),
-                    Shim(backtrace)
                 );
             }
             None => {
                 log::error!(
-                    target: "panic",
-                    "thread '{}' panicked at '{}'{:?}",
+                    "thread '{}' panicked at '{}'",
                     thread,
                     msg,
-                    Shim(backtrace)
                 )
             }
         }
@@ -149,7 +117,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         bullets: Vec::<Bullet>::new(),
         enemy_view: enemy_view,
         enemies: create_enemies(),
-        ammo: 3
+        ammo: 3,
+        score: 0
     };
 
     gameloop::gameloop(
@@ -232,7 +201,6 @@ fn update(
             (*enemy_ptr).y > S_SIZE.1 as i32
         {
             enemies_on_removal.push(i);
-            (*enemy_ptr).speedup = 1;
         }
     }
 
@@ -291,6 +259,8 @@ fn update(
             {
                 bullets_on_removal.push(i);
                 enemies_on_removal.push(j);
+                (*enemy_ptr).speedup = 1;
+                (*state).score += 1;
             }
         }
     }
@@ -328,8 +298,50 @@ fn render(
 ) ->
     Result<(), Box<dyn Error>>
 {
+    let mut wall_view_data = Vec::<Vec<char>>::new();
+
+    for _i in 0..S_SIZE.1 {
+        wall_view_data.push(vec!['|', '|']);
+    }
+
+    let wall_view =
+        Representation::new(' ', wall_view_data);
+
+    let bullets_lable_view =
+        Representation::new(' ',
+            vec![vec!['A', 'M', 'M', 'O', ':']]);
+    let bullets_lable_location =
+        Location {
+            x: (S_SIZE.0 + 7) as i32,
+            y: (S_SIZE.1 - 3) as i32
+        };
+
+    let score_lable_view =
+        Representation::new(' ',
+            vec![vec!['S', 'C', 'O', 'R', 'E', ':']]);
+    let score_lable_location =
+        Location {
+            x: (S_SIZE.0 + 9) as i32,
+            y: 2 as i32
+        };
+
+    let score_view =
+        Representation::new(' ',
+            vec![(*state).score.to_string().chars().collect()]);
+    let score_location =
+        Location {
+            x: (S_SIZE.0 + 9) as i32,
+            y: 3 as i32
+        };
+
     let mut render_queue =
         Vec::<(&Location, &Representation)>::new();
+
+    let wall_location =
+        Location {
+            x: (S_SIZE.0 + 1) as i32,
+            y: 0,
+        };
 
     let turret_location =
         Location {
@@ -341,6 +353,22 @@ fn render(
         &turret_location,
         &(*state).views[(*state).turret.view]));
 
+    render_queue.push((
+        &wall_location,
+        &wall_view));
+
+    render_queue.push((
+        &bullets_lable_location,
+        &bullets_lable_view));
+
+    render_queue.push((
+        &score_lable_location,
+        &score_lable_view));
+
+    render_queue.push((
+        &score_location,
+        &score_view));
+
 
 
     let mut bullets_locations = Vec::<Location>::new();
@@ -349,6 +377,16 @@ fn render(
         bullets_locations.push(Location {
             x: (*state).bullets[i].x,
             y: (*state).bullets[i].y,
+        });
+    }
+
+    for i in 0..(*state).ammo {
+        let x = S_SIZE.0 + 13;
+        let y = S_SIZE.1 - 3;
+
+        bullets_locations.push(Location {
+            x: x as i32 + i as i32,
+            y: y as i32,
         });
     }
 

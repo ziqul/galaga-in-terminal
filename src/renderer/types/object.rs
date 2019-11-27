@@ -14,6 +14,18 @@ pub struct Representation {
 }
 
 impl Representation {
+    pub fn new(
+        null_char: char,
+        data: Vec<Vec<char>>,
+    ) ->
+        Representation
+    {
+        Representation {
+            null_char: null_char,
+            data: data
+        }
+    }
+
     pub fn from_file(
         filepath: &str
     ) ->
