@@ -20,7 +20,7 @@ pub fn gameloop<T>(
     let timer = Instant::now();
 
     let pref_loop_dur = Duration::from_millis(1000 / fps as u64);
-    let mut curr_loop_start = timer.elapsed();
+    let mut curr_loop_start;
     let mut prev_loop_start = timer.elapsed();
 
     let mut proceed = true;
