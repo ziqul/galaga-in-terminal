@@ -1,0 +1,10 @@
+null_char: b
+data: |
+  b_________________________b
+  |                         |
+  | ← / → - move left/right |
+  |   ↑   - shoot           |
+  |  ESC  - exit            |
+  |                         |
+  |   Press Enter to start  |
+  |_________________________|

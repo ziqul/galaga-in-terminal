@@ -9,6 +9,7 @@ use std::thread;
 use crossterm::input::InputEvent;
 use crossterm::input::KeyEvent;
 use rand::Rng;
+use backtrace::Backtrace;
 
 use renderer::types::Location;
 use renderer::types::Renderer;
@@ -52,13 +53,19 @@ struct GameState {
     enemy_view: usize,
     enemies: Vec<Enemy>,
     ammo: u8,
-    score: u16
+    score: u16,
+    gameover: bool,
+    gameover_view: usize,
+    started: bool,
+    restart: bool,
+    prestart_view: usize
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     simple_logging::log_to_file(
         "output.log", log::LevelFilter::Info)?;
     panic::set_hook(Box::new(|info| {
+        let backtrace = Backtrace::new();
         let thread = thread::current();
         let thread = thread.name().unwrap_or("unnamed");
 
@@ -73,25 +80,27 @@ fn main() -> Result<(), Box<dyn Error>> {
         match info.location() {
             Some(location) => {
                 log::error!(
-                    "thread '{}' panicked at '{}': {}:{}",
+                    "thread '{}' panicked at '{}': {}:{}\n{:?}",
                     thread,
                     msg,
                     location.file(),
                     location.line(),
+                    backtrace
                 );
             }
             None => {
                 log::error!(
-                    "thread '{}' panicked at '{}'",
+                    "thread '{}' panicked at '{}'\n{:?}",
                     thread,
                     msg,
+                    backtrace
                 )
             }
         }
     }));
 
     let renderer =
-        renderer::init(S_SIZE.0 + 20, S_SIZE.1)?;
+        renderer::init(S_SIZE.0 + 16, S_SIZE.1)?;
 
     let mut views = Vec::<Representation>::new();
 
@@ -104,6 +113,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let enemy_view =
         load_view(
             "./res/objects/enemy.yaml", &mut views)?;
+    let gameover_view =
+        load_view(
+            "./res/objects/gameover.yaml", &mut views)?;
+    let prestart_view =
+        load_view(
+            "./res/objects/prestart.yaml", &mut views)?;
 
     let state = GameState {
         views: views,
@@ -118,7 +133,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         enemy_view: enemy_view,
         enemies: create_enemies(),
         ammo: 3,
-        score: 0
+        score: 0,
+        gameover: false,
+        gameover_view: gameover_view,
+        started: false,
+        restart: false,
+        prestart_view: prestart_view
     };
 
     gameloop::gameloop(
@@ -141,7 +161,21 @@ fn input(
                 *proceed = false;
                 break;
             }
+            InputEvent::Keyboard(KeyEvent::Enter) => {
+                if !(*state).started {
+                    (*state).started = true;
+                }
+
+                if (*state).gameover && !(*state).restart {
+                    (*state).gameover = false;
+                    (*state).restart = true;
+                }
+            }
             InputEvent::Keyboard(KeyEvent::Right) => {
+                if !(*state).started || (*state).gameover {
+                    return;
+                }
+
                 let speed = (*state).turret.speed;
 
                 let turret_width = (*state).views[(*state).turret.view].data()[0].len() as i32;
@@ -151,6 +185,10 @@ fn input(
                 }
             }
             InputEvent::Keyboard(KeyEvent::Left) => {
+                if !(*state).started || (*state).gameover {
+                    return;
+                }
+
                 let speed = (*state).turret.speed;
 
                 if (*state).turret.x - speed >= 0 {
@@ -158,6 +196,10 @@ fn input(
                 }
             }
             InputEvent::Keyboard(KeyEvent::Up) => {
+                if !(*state).started || (*state).gameover {
+                    return;
+                }
+
                 if (*state).ammo > 0 {
                     let x = (*state).turret.x + 3;
                     let y = (*state).turret.y - 0;
@@ -182,6 +224,30 @@ fn update(
     state: &mut GameState,
     delta: Duration
 ) {
+    if (*state).restart {
+        (*state).turret = Turret {
+                    speed: 4,
+                    x: S_SIZE.0 as i32 / 2 - 5,
+                    y: S_SIZE.1 as i32 - 2,
+                    view: (*state).turret.view
+        };
+        (*state).bullet_view = (*state).bullet_view;
+        (*state).bullets = Vec::<Bullet>::new();
+        (*state).enemy_view = (*state).enemy_view;
+        (*state).enemies = create_enemies();
+        (*state).ammo = 3;
+        (*state).score = 0;
+        (*state).gameover = false;
+        (*state).gameover_view = (*state).gameover_view;
+        (*state).started = true;
+        (*state).restart = false;
+        (*state).prestart_view = (*state).prestart_view;
+    }
+
+    if (*state).gameover || !(*state).started {
+        return;
+    }
+
     let mut enemies_on_removal = Vec::<usize>::new();
     let mut new_enemies = Vec::<Enemy>::new();
 
@@ -238,18 +304,6 @@ fn update(
             let enemy_ptr = &mut (*state).enemies[j];
             let enemy_delta = (*enemy_ptr).speed as f32 * delta.as_secs_f32();
 
-            // log::info!("{:?}", "-----");
-            // log::info!("{:?}, (*enemy_ptr).xf", (*enemy_ptr).xf);
-            // log::info!("{:?}, (*bullet_ptr).xf", (*bullet_ptr).xf);
-            // log::info!("{:?}, bullet_width", bullet_width);
-            // log::info!("{:?}, enemy_width", enemy_width);
-            // log::info!("{:?}, (*enemy_ptr).yf", (*enemy_ptr).yf);
-            // log::info!("{:?}, enemy_delta", enemy_delta);
-            // log::info!("{:?}, (*bullet_ptr).yf", (*bullet_ptr).yf);
-            // log::info!("{:?}, bullet_height", bullet_height);
-            // log::info!("{:?}, bullet_delta", bullet_delta);
-            // log::info!("{:?}, enemy_height", enemy_height);
-
             if
                 (*enemy_ptr).xf <= (*bullet_ptr).xf + bullet_width &&
                 (*bullet_ptr).xf <= (*enemy_ptr).xf + enemy_width &&
@@ -261,6 +315,28 @@ fn update(
                 enemies_on_removal.push(j);
                 (*enemy_ptr).speedup = 1;
                 (*state).score += 1;
+            }
+        }
+    }
+
+
+    {
+        let turret_ptr = &mut (*state).turret;
+        let turret_width = (*state).views[(*turret_ptr).view].data()[0].len() as i32 - 2;
+        let turret_height = (*state).views[(*turret_ptr).view].data().len() as i32;
+        for i in 0..(*state).enemies.len() {
+            let enemy_ptr = &mut (*state).enemies[i];
+            let enemy_width = (*state).views[(*state).enemy_view].data()[0].len() as i32;
+            let enemy_height = (*state).views[(*state).enemy_view].data().len() as i32;
+
+            if
+                (*turret_ptr).x + 1 + turret_width > (*enemy_ptr).x &&
+                (*enemy_ptr).x + enemy_width > (*turret_ptr).x + 1 &&
+
+                (*turret_ptr).y + turret_height > (*enemy_ptr).y &&
+                (*enemy_ptr).y + enemy_height > (*turret_ptr).y
+            {
+                (*state).gameover = true;
             }
         }
     }
@@ -312,7 +388,7 @@ fn render(
             vec![vec!['A', 'M', 'M', 'O', ':']]);
     let bullets_lable_location =
         Location {
-            x: (S_SIZE.0 + 7) as i32,
+            x: (S_SIZE.0 + 3) as i32,
             y: (S_SIZE.1 - 3) as i32
         };
 
@@ -321,7 +397,7 @@ fn render(
             vec![vec!['S', 'C', 'O', 'R', 'E', ':']]);
     let score_lable_location =
         Location {
-            x: (S_SIZE.0 + 9) as i32,
+            x: (S_SIZE.0 + 3) as i32,
             y: 2 as i32
         };
 
@@ -330,7 +406,7 @@ fn render(
             vec![(*state).score.to_string().chars().collect()]);
     let score_location =
         Location {
-            x: (S_SIZE.0 + 9) as i32,
+            x: (S_SIZE.0 + 3) as i32,
             y: 3 as i32
         };
 
@@ -339,7 +415,7 @@ fn render(
 
     let wall_location =
         Location {
-            x: (S_SIZE.0 + 1) as i32,
+            x: (S_SIZE.0 - 3) as i32,
             y: 0,
         };
 
@@ -381,7 +457,7 @@ fn render(
     }
 
     for i in 0..(*state).ammo {
-        let x = S_SIZE.0 + 13;
+        let x = S_SIZE.0 + 9;
         let y = S_SIZE.1 - 3;
 
         bullets_locations.push(Location {
@@ -413,6 +489,27 @@ fn render(
             &(*state).views[(*state).enemy_view]));
     }
 
+    let gameover_location =
+        Location {
+            x: (S_SIZE.0 + 16) as i32 / 2 - 31,
+            y: S_SIZE.1 as i32 / 2 - 3,
+        };
+    if (*state).gameover {
+        render_queue.push((
+            &gameover_location,
+            &(*state).views[(*state).gameover_view]));
+    }
+
+    let prestart_location =
+        Location {
+            x: (S_SIZE.0 + 16) as i32 / 2 - 13,
+            y: S_SIZE.1 as i32 / 2 - 3,
+        };
+    if !(*state).started {
+        render_queue.push((
+            &prestart_location,
+            &(*state).views[(*state).prestart_view]));
+    }
 
 
     renderer.render(&render_queue)?;
